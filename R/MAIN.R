@@ -74,13 +74,13 @@ if (run_main) {
   sim %<>% add_method("CumlIncr", function(dat, n, params) {
     
     delta <- params$delta
-    if (params$wts=="equal") {
+    if (params$wts[1]=="equal") {
       wts <- rep(1/(1/delta-1),1/delta-1)
     } else {
       wts <- params$wts
     }
     
-    if (params$wts=="equal") {
+    if (params$wts[1]=="equal") {
       
       T_n <- 1 - mean(dat<=1-delta) - mean(dat<=delta)
       asy_sd <- sqrt(2*delta)
