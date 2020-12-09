@@ -17,9 +17,9 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
 # Load packages
 {
   library(simba) # devtools::install_github(repo="Avi-Kenny/simba")
-  library(magrittr)
   library(ggplot2)
   library(dplyr)
+  library(boot)
 }
 
 # Load functions
@@ -30,6 +30,7 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
 # Set code blocks to run
 {
   run_main <- TRUE
+  run_testing <- FALSE
 }
 
 
@@ -40,142 +41,305 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
 
 if (run_main) {
   
-  sim <- new_sim()
+  # Use these commands to run on Slurm:
+  # sbatch --export=run='first',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+  # sbatch --depend=afterok:11 --array=1-540 --export=cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+  # sbatch --depend=afterok:12 --export=run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
   
-  sim %<>% set_config(
-    parallel = "none",
-    packages = c("magrittr", "dplyr")
-  )
-  
-  # This function generates data
-  #   `n` is the sample size
-  #   `true_density` is the type of density used to generate the data, specified
-  #       as a character string
-  sim %<>% add_creator("generate_dataset", function(n, true_density) {
+  run_on_cluster(
     
-    # !!!!! Add other monotone distributions
-    
-    # Quantile function for probability integral transform sampling
-    if (true_density=="f(x)=1") {
-      Q <- function(x) { x }
-    } else if (true_density=="f(x)=2x") {
-      Q <- function(x) { sqrt(x) }
-    } else if (true_density=="f(x)=ke^x") {
-      Q <- function(x) { log(x*(exp(1)-1)+1) }
-    }
-    
-    dat = Q(runif(n));
-    
-  })
-  
-  # Marco method 1
-  # Currently assumes equally sized intervals of size delta
-  # wts argument can either be "equal" or a vector of length (1/delta)-1
-  sim %<>% add_method("CumlIncr", function(dat, n, params) {
-    
-    delta <- params$delta
-    if (params$wts[1]=="equal") {
-      wts <- rep(1/(1/delta-1),1/delta-1)
-    } else {
-      wts <- params$wts
-    }
-    
-    if (params$wts[1]=="equal") {
+    first = {
       
-      T_n <- 1 - mean(dat<=1-delta) - mean(dat<=delta)
-      asy_sd <- sqrt(2*delta)
+      sim <- new_sim()
+      
+      sim %<>% set_config(
+        parallel = "none",
+        packages = c("dplyr", "boot")
+      )
+      
+      # This function generates data
+      #   `n` is the sample size
+      #   `true_density` is the type of density used to generate the data, specified
+      #       as a character string
+      sim %<>% add_creator("generate_dataset", function(n, true_density) {
+        
+        # !!!!! Add other monotone distributions
+        
+        # Quantile function for probability integral transform sampling
+        if (true_density=="f(x)=1") {
+          Q <- function(x) { x }
+        } else if (true_density=="f(x)=2x") {
+          Q <- function(x) { sqrt(x) }
+        } else if (true_density=="f(x)=ke^x") {
+          Q <- function(x) { log(x*(exp(1)-1)+1) }
+        }
+        
+        dat = Q(runif(n));
+        
+      })
+      
+      # Marco method 1
+      # Currently assumes equally sized intervals of size delta
+      # wts argument can either be "equal" or a vector of length (1/delta)-1
+      sim %<>% add_method("CumlIncr", function(dat, n, params) {
+        
+        delta <- params$delta
+        if (params$wts[1]=="equal") {
+          wts <- rep(1/(1/delta-1),1/delta-1)
+        } else {
+          wts <- params$wts
+        }
+        
+        if (params$wts[1]=="equal") {
+          
+          T_n <- 1 - mean(dat<=1-delta) - mean(dat<=delta)
+          asy_sd <- sqrt(2*delta)
+          
+        } else if (delta==1/2) {
+          
+          # !!!!! This is technically the same test as above; combine
+          T_n <- 2 - 4*mean(dat<=0.5)
+          asy_sd <- 2
+          
+        } else if (delta==1/3) {
+          
+          w1 <- wts[1]
+          w2 <- wts[2]
+          T_n <- 3*(w1-2*w2)*mean(dat<=2/3) + 3*(w2-2*w1)*mean(dat<=1/3) + 3*w2
+          asy_sd <- sqrt( 6*(w1^2-w1*w2+w2^2) )
+          
+        }
+        
+        return (as.numeric(sqrt(n)*T_n>asy_sd*qnorm(0.95)))
+        
+      })
+      
+      # Generate beta_n distribution and add as a simulation constant
+      beta_n_distr <- list()
+      for (n in c(10,20,30,40,50)) {
+        beta_ns <- c()
+        for (i in 1:1000) {
+          x <- runif(n)
+          Theta_hat <- ecdf(x)
+          mu_2n <- mean(x^2)
+          mu_3n <- mean(x^3)
+          beta_n <- mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x))
+          beta_ns <- c(beta_ns,beta_n)
+        }
+        beta_n_distr[[as.character(n)]] <- beta_ns
+      }
+      sim %<>% add_constants("beta_n_distr"=beta_n_distr)
+      rm(beta_n_distr)
+      
+      # Marco method 2
+      sim %<>% add_method("Slope", function(dat, n, params) {
+        
+        Theta_hat <- ecdf(dat)
+        mu_2n <- mean(dat^2)
+        mu_3n <- mean(dat^3)
+        beta_n <- mean((mu_2n*dat^2 - mu_3n*dat)*Theta_hat(dat))
+        
+        if (params$subtype=="SS-adapted") {
+          crit_val <- quantile(params$beta_n_distr[[as.character(n)]],0.95)
+          return(as.numeric(beta_n>crit_val))
+        }
+        
+        if (params$subtype=="mixed bootstrap") {
+          
+          # !!!!! TO DO
+          
+        }
+        
+        if (params$subtype=="full bootstrap") {
+          
+          # print(testvar) # !!!!!
+          
+          # Define the statistic to bootstrap
+          beta_n <- function(dat,indices) {
+            d <- dat[indices]
+            Theta_hat <- ecdf(d)
+            mu_2n <- mean(d^2)
+            mu_3n <- mean(d^3)
+            return (mean((mu_2n*d^2 - mu_3n*d)*Theta_hat(d)))
+          }
+          
+          # Run bootstrap
+          boot_obj <- boot(data=dat, statistic=beta_n, R=1000) # !!!!! Try fewer than 1,000 replicates
+          
+          # Calculate critical value
+          crit_val <- as.numeric(quantile(boot_obj$t, 0.05))
+          
+          # Reject if value of beta_n (zero) crit_val
+          return(as.numeric(crit_val>0))
+          # return(as.numeric(!(ci$bca[4]<0 & ci$bca[5]>0)))
+          
+        }
+        
+      })
+      
+      # Z test from Woodroofe and Sun 1999
+      sim %<>% add_method("Z test", function(dat, n) {
+        as.numeric(mean(log(dat))>-1+qnorm(0.95)/sqrt(n))
+      })
+      
+      # L test from Woodroofe and Sun 1999
+      sim %<>% add_method("L test", function(dat, n) {
+        as.numeric(mean(dat)>1/2+qnorm(0.95)/sqrt(12*n))
+      })
+      
+      # D test from Woodroofe and Sun 1999 (c=0.2)
+      # !!!!! Does not work yet; gives too high rejection rates
+      sim %<>% add_method("D test", function(dat, n) {
+        t <- seq(0,1,0.001)
+        # t <- seq(0,1,0.01)
+        F_hat <- ecdf(dat)
+        D <- sqrt(n) * max(abs(F_hat(t)-t))
+        if (!(n %in% c(10,20,30,40,50))) { stop("n must be in c(10,20,30,40,50)") }
+        crit_val <- case_when(
+          n==10 ~ 0.960,
+          n==20 ~ 0.929,
+          n==30 ~ 0.943,
+          n==40 ~ 0.945,
+          n==50 ~ 0.956
+        )
+        return (as.numeric(D>crit_val))
+      })
+      
+      # P test from Woodroofe and Sun 1999 (c=0.2)
+      sim %<>% add_method("P test", function(dat, n) {
+        # !!!!! TO DO
+      })
+      
+      sim %<>% add_script("one_simulation", function() {
+        
+        # testvar <- "hey" # !!!!!
+        
+        # beta_n_distr <- C$beta_n_distr
+        dat <- generate_dataset(L$n, L$true_density)
+        if (is.null(L$test$params)) {
+          reject <- do.call(L$test$type, list(dat, L$n))
+        } else {
+          if (!is.null(L$test$params$subtype) && L$test$params$subtype=="SS-adapted") { # !!!!!
+            reject <- do.call(
+              L$test$type,
+              list(dat,L$n,c(L$test$params,list("beta_n_distr"=C$beta_n_distr)))
+            )
+          } else {
+            reject <- do.call(L$test$type, list(dat, L$n, L$test$params))
+          }
+          
+        }
+        
+        # return(list("reject"=1)) # !!!!!
+        return (list("reject"=reject))
+        
+      })
+      
+      sim %<>% set_config(num_sim=1000)
+      
+      sim %<>% set_levels(
+        n = c(10,20,30,40,50),
+        test = list(
+          "Z test" = list(type="Z test"),
+          "L test" = list(type="L test"),
+          "Slope (SS-adapted)" = list(
+            type = "Slope",
+            params = list(subtype="SS-adapted")
+          ),
+          "Slope (bootstrap)" = list(
+            type = "Slope",
+            params=list(subtype="full bootstrap")
+          ),
+          "CumlIncr (delta=1/2)" = list(
+            type = "CumlIncr",
+            params = list(delta=(1/2), wts=1)
+          ),
+          "CumlIncr (delta=1/3, equal weights)" = list(
+            type = "CumlIncr",
+            params = list(delta=(1/3), wts=c(0.5,0.5))
+          )
+        ),
+        true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
+      )
+      
+    },
+    
+    main = {
+      sim %<>% run("one_simulation")
+    },
+    
+    last = {
+      
+      # sim <- readRDS("sim.simba")
+      # sim <- readRDS("sim_20201126.simba")
 
-    } else if (delta==1/2) {
+      summ <- sim %>% summary(mean=list(name="power",x="reject"))
       
-      # !!!!! This is technically the same test as above; combine
-      T_n <- 2 - 4*mean(dat<=0.5)
-      asy_sd <- 2
-
-    } else if (delta==1/3) {
+      # Visualize results
+      ggplot(summ, aes(x=n, y=power, color=factor(test))) +
+        geom_line() + geom_point() +
+        facet_wrap(~true_density, ncol=3, scales="free_y") +
+        labs(
+          x = "sample size", y = "Power", color = "Test type",
+          title = paste0("Power of tests for constant vs. monotone density (1,000",
+                         " sims per level)")
+        ) + scale_color_manual(values=c("turquoise", "salmon", "dodgerblue2", "green3", "darkorchid2", "orange"))
+        
       
-      w1 <- wts[1]
-      w2 <- wts[2]
-      T_n <- 3*(w1-2*w2)*mean(dat<=2/3) + 3*(w2-2*w1)*mean(dat<=1/3) + 3*w2
-      asy_sd <- sqrt( 6*(w1^2-w1*w2+w2^2) )
-      
-    }
+    },
     
-    return (as.numeric(sqrt(n)*T_n>asy_sd*qnorm(0.95)))
-    
-  })
-  
-  # Generate beta_n distribution and add as a simulation constant
-  beta_n_distr <- list()
-  for (n in c(10,20,30,40,50)) {
-    beta_ns <- c()
-    for (i in 1:1000) {
-      x <- runif(n)
-      Theta_hat <- ecdf(x)
-      mu_2n <- mean(x^2)
-      mu_3n <- mean(x^3)
-      beta_n <- mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x))
-      beta_ns <- c(beta_ns,beta_n)
-    }
-    beta_n_distr[[as.character(n)]] <- beta_ns
-  }
-  sim %<>% add_constant("beta_n_distr", beta_n_distr)
-  
-  # Marco method 2
-  sim %<>% add_method("Slope", function(dat, n) {
-    Theta_hat <- ecdf(dat)
-    mu_2n <- mean(dat^2)
-    mu_3n <- mean(dat^3)
-    beta_n <- mean((mu_2n*dat^2 - mu_3n*dat)*Theta_hat(dat))
-    crit_val <- quantile(beta_n_distr[[as.character(n)]],0.95)
-    return(as.numeric(beta_n>crit_val))
-  })
-  
-  # Z test from Woodroofe and Sun 1999
-  sim %<>% add_method("Z test", function(dat, n) {
-    as.numeric(mean(log(dat))>-1+qnorm(0.95)/sqrt(n))
-  })
-  
-  # L test from Woodroofe and Sun 1999
-  sim %<>% add_method("L test", function(dat, n) {
-    as.numeric(mean(dat)>1/2+qnorm(0.95)/sqrt(12*n))
-  })
-  
-  # D test from Woodroofe and Sun 1999 (c=0.2)
-  # !!!!! Does not work yet; gives too high rejection rates
-  sim %<>% add_method("D test", function(dat, n) {
-    t <- seq(0,1,0.001)
-    # t <- seq(0,1,0.01)
-    F_hat <- ecdf(dat)
-    D <- sqrt(n) * max(abs(F_hat(t)-t))
-    if (!(n %in% c(10,20,30,40,50))) { stop("n must be in c(10,20,30,40,50)") }
-    crit_val <- case_when(
-      n==10 ~ 0.960,
-      n==20 ~ 0.929,
-      n==30 ~ 0.943,
-      n==40 ~ 0.945,
-      n==50 ~ 0.956
+    cluster_config = list(
+      sim_var = "sim",
+      js = "slurm",  # Bionic
+      dir = "/home/akenny/z.monotest"  # Bionic
     )
-    return (as.numeric(D>crit_val))
-  })
+
+  )
+
+}
+
+
+
+############################################################.
+##### TESTING: compare distributions of test statistic #####
+############################################################.
+
+if (run_testing) {
   
-  # P test from Woodroofe and Sun 1999 (c=0.2)
-  sim %<>% add_method("P test", function(dat, n) {
-    # !!!!! TO DO
-  })
+  n <- 50
+  reps <- 1000
+  distribution_exact <- c()
+  for (i in 1:reps) {
+    x <- runif(n)
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    beta_n <- mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x))
+    distribution_exact <- c(distribution_exact,beta_n)
+  }
   
-  sim %<>% add_script("one_simulation", function() {
-    
-    beta_n_distr <- C$beta_n_distr
-    dat <- generate_dataset(L$n, L$true_density)
-    if (is.null(L$test$params)) {
-      reject <- do.call(L$test$type, list(dat, L$n))
-    } else {
-      reject <- do.call(L$test$type, list(dat, L$n, L$test$params))
-    }
-    
-    return (list("reject"=reject))
-    
-  })
+  distribution_fullboot <- c()
+  beta_n <- function(dat,indices) {
+    x <- dat[indices]
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    return (mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x)))
+  }
+  boot_obj <- boot(data=runif(n), statistic=beta_n, R=reps)
+  
+  print(sd(distribution_exact))
+  print(sd(boot_obj$t))
+  
+  distribution_mixedboot <- c()
+  
+  ggplot(
+    data.frame(
+      x = c(distribution_exact,boot_obj$t),
+      type = rep(c("Exact", "Full bootstrap"), each=reps)
+    ),
+    aes(x=x)
+  ) + geom_histogram() + facet_wrap(~type)
   
 }
 
@@ -185,45 +349,9 @@ if (run_main) {
 ##### MAIN: Sim #1: compare different methods #####
 ###################################################.
 
-if (run_main) {
+if (FALSE) {
   
-  sim_1 <- sim
-
-  sim_1 %<>% set_config(num_sim=10000)
-  
-  sim_1 %<>% set_levels(
-    n = c(10,20,30,40,50),
-    test = list(
-      "Z test" = list(type="Z test"),
-      "L test" = list(type="L test"),
-      # "D test" = list(type="D test"),
-      "Slope" = list(type="Slope"),
-      "CumlIncr (delta=1/2)" = list(
-        type = "CumlIncr",
-        params = list(delta=(1/2), wts=1)
-      ),
-      "CumlIncr (delta=1/3, equal weights)" = list(
-        type = "CumlIncr",
-        params = list(delta=(1/3), wts=c(0.5,0.5))
-      )
-    ),
-    true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
-  )
-  
-  sim_1 %<>% run("one_simulation")
-  
-  sim_1$constants <- NULL # !!!!! TEMP FIX
-  summ <- sim_1 %>% summary() %>% rename("power"=`mean_reject`)
-
-  # Visualize results
-  ggplot(summ, aes(x=n, y=power, color=factor(test))) +
-    geom_line() + geom_point() +
-    facet_wrap(~true_density, ncol=3, scales="free_y") +
-    labs(
-      x = "sample size", y = "Power", color = "Test type",
-      title = paste0("Power of tests for constant vs. monotone density (10,000",
-                     " sims per level)")
-    )
+  # !!!!! Restructure
   
 }
 
@@ -233,7 +361,7 @@ if (run_main) {
 ##### MAIN: Sim #2: compare different weights for CumlIncr method #####
 #######################################################################.
 
-if (run_main) {
+if (FALSE) {
   
   sim_2 <- sim
   
@@ -259,7 +387,6 @@ if (run_main) {
   
   sim_2 %<>% run("one_simulation")
   
-  sim_2$constants <- NULL # !!!!! TEMP FIX
   summ <- sim_2 %>% summary() %>% rename("power"=`mean_reject`)
 
   # Visualize results
@@ -280,7 +407,7 @@ if (run_main) {
 ##### MAIN: Sim #3: compare different delta values for CumlIncr method #####
 ############################################################################.
 
-if (run_main) {
+if (FALSE) {
   
   sim_3 <- sim
   
@@ -310,7 +437,6 @@ if (run_main) {
   
   sim_3 %<>% run("one_simulation")
   
-  sim_3$constants <- NULL # !!!!! TEMP FIX
   summ <- sim_3 %>% summary() %>% rename("power"=`mean_reject`)
   summ$test <- factor(summ$test, levels=c("1/2","1/3","1/4","1/5","1/6","1/7",
                                           "1/8","1/9","1/10"))
