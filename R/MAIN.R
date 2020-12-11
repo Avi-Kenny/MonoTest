@@ -53,8 +53,51 @@ if (run_main) {
       sim <- new_sim()
       
       sim %<>% set_config(
+        num_sim = 1000,
         parallel = "none",
         packages = c("dplyr", "boot")
+      )
+      
+      sim %<>% set_levels(
+        n = c(25,50,100),
+        # n = c(10,20,30,40,50),
+        test = list(
+          # "Z test" = list(type="Z test"),
+          # "L test" = list(type="L test"),
+          "Slope (SS-adapted)" = list(
+            type = "Slope",
+            params = list(subtype="SS-adapted")
+          ),
+          "Slope (NEW bootstrap; quantile)" = list(
+            type = "Slope",
+            params=list(subtype="NEW bootstrap", ci_type="quantile")
+          ),
+          "Slope (full bootstrap; quantile)" = list(
+            type = "Slope",
+            params=list(subtype="full bootstrap", ci_type="quantile")
+          ),
+          # "Slope (full bootstrap; normal)" = list(
+          #   type = "Slope",
+          #   params=list(subtype="full bootstrap", ci_type="normal")
+          # ),
+          "Slope (mixed bootstrap; quantile)" = list(
+            type = "Slope",
+            params=list(subtype="mixed bootstrap", ci_type="quantile")
+          )
+          # "Slope (mixed bootstrap; normal)" = list(
+          #   type = "Slope",
+          #   params=list(subtype="mixed bootstrap", ci_type="normal")
+          # )
+          # "CumlIncr (delta=1/2)" = list(
+          #   type = "CumlIncr",
+          #   params = list(delta=(1/2), wts=1)
+          # ),
+          # "CumlIncr (delta=1/3, equal weights)" = list(
+          #   type = "CumlIncr",
+          #   params = list(delta=(1/3), wts=c(0.5,0.5))
+          # )
+        ),
+        true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
       )
       
       # This function generates data
@@ -116,7 +159,8 @@ if (run_main) {
       
       # Generate beta_n distribution and add as a simulation constant
       beta_n_distr <- list()
-      for (n in c(10,20,30,40,50)) {
+      for (n in c(25,50,100)) { # !!!!!
+      # for (n in c(10,20,30,40,50)) {
         beta_ns <- c()
         for (i in 1:1000) {
           x <- runif(n)
@@ -146,16 +190,61 @@ if (run_main) {
         
         if (params$subtype=="mixed bootstrap") {
           
-          # !!!!! TO DO
+          # Define the statistic to bootstrap
+          bootstat <- function(dat,indices) {
+            d <- dat[indices]
+            Theta_hat <- ecdf(d)
+            mu_2n <- mean(dat^2)
+            mu_3n <- mean(dat^3)
+            return (mean((mu_2n*dat^2 - mu_3n*dat)*(Theta_hat(dat)-dat)))
+          }
+          
+          # Run bootstrap
+          boot_obj <- boot(data=dat, statistic=bootstat, R=1000)
+          
+          # Calculate critical value
+          if (params$ci_type=="quantile") {
+            crit_val <- as.numeric(quantile(boot_obj$t, 0.05))
+          } else if (params$ci_type=="normal") {
+            crit_val <- qnorm(0.05, mean=mean(boot_obj$t), sd=sd(boot_obj$t))
+          }
+          
+          return(as.numeric(crit_val>0))
+          
+        }
+        
+        if (params$subtype=="NEW bootstrap") {
+          
+          # Define the statistic to bootstrap
+          bootstat <- function(dat,indices) {
+            d <- dat[indices]
+            Theta_hat <- ecdf(d)
+            mu_2n <- mean(dat^2)
+            mu_3n <- mean(dat^3)
+            piece_1 <- mean((mu_2n*dat^2 - mu_3n*dat)*(Theta_hat(dat)-dat))
+            piece_2a <- mean(dat^2*(Theta_hat(dat)-dat))*(mean(d^2)-mean(dat^2))
+            piece_2b <- mean(dat*(dat-Theta_hat(dat)))*(mean(d^3)-mean(dat^3))
+            return (piece_1+piece_2a+piece_2b)
+          }
+          
+          # Run bootstrap
+          boot_obj <- boot(data=dat, statistic=bootstat, R=1000)
+          
+          # Calculate critical value
+          if (params$ci_type=="quantile") {
+            crit_val <- as.numeric(quantile(boot_obj$t, 0.05))
+          } else if (params$ci_type=="normal") {
+            crit_val <- qnorm(0.05, mean=mean(boot_obj$t), sd=sd(boot_obj$t))
+          }
+          
+          return(as.numeric(crit_val>0))
           
         }
         
         if (params$subtype=="full bootstrap") {
           
-          # print(testvar) # !!!!!
-          
           # Define the statistic to bootstrap
-          beta_n <- function(dat,indices) {
+          bootstat <- function(dat,indices) {
             d <- dat[indices]
             Theta_hat <- ecdf(d)
             mu_2n <- mean(d^2)
@@ -164,14 +253,16 @@ if (run_main) {
           }
           
           # Run bootstrap
-          boot_obj <- boot(data=dat, statistic=beta_n, R=1000) # !!!!! Try fewer than 1,000 replicates
+          boot_obj <- boot(data=dat, statistic=bootstat, R=1000)
           
           # Calculate critical value
-          crit_val <- as.numeric(quantile(boot_obj$t, 0.05))
+          if (params$ci_type=="quantile") {
+            crit_val <- as.numeric(quantile(boot_obj$t, 0.05))
+          } else if (params$ci_type=="normal") {
+            crit_val <- qnorm(0.05, mean=mean(boot_obj$t), sd=sd(boot_obj$t))
+          }
           
-          # Reject if value of beta_n (zero) crit_val
           return(as.numeric(crit_val>0))
-          # return(as.numeric(!(ci$bca[4]<0 & ci$bca[5]>0)))
           
         }
         
@@ -234,34 +325,7 @@ if (run_main) {
         return (list("reject"=reject))
         
       })
-      
-      sim %<>% set_config(num_sim=1000)
-      
-      sim %<>% set_levels(
-        n = c(10,20,30,40,50),
-        test = list(
-          "Z test" = list(type="Z test"),
-          "L test" = list(type="L test"),
-          "Slope (SS-adapted)" = list(
-            type = "Slope",
-            params = list(subtype="SS-adapted")
-          ),
-          "Slope (bootstrap)" = list(
-            type = "Slope",
-            params=list(subtype="full bootstrap")
-          ),
-          "CumlIncr (delta=1/2)" = list(
-            type = "CumlIncr",
-            params = list(delta=(1/2), wts=1)
-          ),
-          "CumlIncr (delta=1/3, equal weights)" = list(
-            type = "CumlIncr",
-            params = list(delta=(1/3), wts=c(0.5,0.5))
-          )
-        ),
-        true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
-      )
-      
+
     },
     
     main = {
@@ -318,7 +382,6 @@ if (run_testing) {
     distribution_exact <- c(distribution_exact,beta_n)
   }
   
-  distribution_fullboot <- c()
   beta_n <- function(dat,indices) {
     x <- dat[indices]
     Theta_hat <- ecdf(x)
@@ -328,15 +391,25 @@ if (run_testing) {
   }
   boot_obj <- boot(data=runif(n), statistic=beta_n, R=reps)
   
+  beta_n_mixed <- function(dat,indices) {
+    x <- dat[indices]
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    return (mean((mu_2n*x^2 - mu_3n*x)*(Theta_hat(x)-x)))
+  }
+  boot_obj_mixed <- boot(data=runif(n), statistic=beta_n_mixed, R=reps)
+  
   print(sd(distribution_exact))
   print(sd(boot_obj$t))
+  print(sd(boot_obj_mixed$t))
   
-  distribution_mixedboot <- c()
+  
   
   ggplot(
     data.frame(
-      x = c(distribution_exact,boot_obj$t),
-      type = rep(c("Exact", "Full bootstrap"), each=reps)
+      x = c(distribution_exact,boot_obj$t,boot_obj_mixed$t),
+      type = rep(c("Exact", "Full bootstrap", "Mixed bootstrap"), each=reps)
     ),
     aes(x=x)
   ) + geom_histogram() + facet_wrap(~type)
