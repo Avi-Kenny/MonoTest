@@ -36,3 +36,6 @@ vignettes/*.pdf
 *.knit.md
 R/Scratch.R
 *.Rproj
+
+# simba files
+*.simba
