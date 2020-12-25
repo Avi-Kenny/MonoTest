@@ -184,7 +184,7 @@ if (run_main) {
         beta_n <- mean((mu_2n*dat^2 - mu_3n*dat)*Theta_hat(dat))
         
         if (params$subtype=="SS-adapted") {
-          crit_val <- quantile(params$beta_n_distr[[as.character(n)]],0.95)
+          crit_val <- quantile(C$beta_n_distr[[as.character(n)]],0.95)
           return(as.numeric(beta_n>crit_val))
         }
         
@@ -301,27 +301,15 @@ if (run_main) {
         # !!!!! TO DO
       })
       
-      sim %<>% add_script("one_simulation", function() {
+      sim %<>% set_script(function() {
         
-        # testvar <- "hey" # !!!!!
-        
-        # beta_n_distr <- C$beta_n_distr
         dat <- generate_dataset(L$n, L$true_density)
         if (is.null(L$test$params)) {
           reject <- do.call(L$test$type, list(dat, L$n))
         } else {
-          if (!is.null(L$test$params$subtype) && L$test$params$subtype=="SS-adapted") { # !!!!!
-            reject <- do.call(
-              L$test$type,
-              list(dat,L$n,c(L$test$params,list("beta_n_distr"=C$beta_n_distr)))
-            )
-          } else {
-            reject <- do.call(L$test$type, list(dat, L$n, L$test$params))
-          }
-          
+          reject <- do.call(L$test$type, list(dat, L$n, L$test$params))
         }
         
-        # return(list("reject"=1)) # !!!!!
         return (list("reject"=reject))
         
       })
@@ -329,7 +317,7 @@ if (run_main) {
     },
     
     main = {
-      sim %<>% run("one_simulation")
+      sim %<>% run()
     },
     
     last = {
