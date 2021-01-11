@@ -3,9 +3,9 @@
 
 
 
-################.
+#################.
 ##### SETUP #####
-################.
+#################.
 
 # Set working directory
 if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
@@ -26,7 +26,6 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
 # Load functions
 {
   source("fns_density.R")
-  source("fns_doseresp.R")
 }
 
 # Set code blocks to run
@@ -135,9 +134,9 @@ if (run_main) {
 
 
 
-############################################.
-##### MAIN: Simulation setup (density) #####
-############################################.
+##########################################.
+##### MAIN: Setup and run simulation #####
+##########################################.
 
 if (run_main) {
   
