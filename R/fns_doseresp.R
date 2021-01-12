@@ -1,3 +1,19 @@
+#' Expit function
+#' 
+#' @param x Numeric input
+#' @return Numeric output
+expit <- function(x) {exp(x)/(1+exp(x))}
+
+
+
+#' Integral of expit function
+#' 
+#' @param x Numeric input
+#' @return Numeric output
+intexpit <- function(x) {log(1+exp(x))}
+
+
+
 #' Generate data according to a density
 #' 
 #' @param n Sample size
@@ -8,15 +24,10 @@
 #' @return A dataframe representing a study population
 generate_data_dr <- function(n, beta, mono_form) {
   
-  expit <- function(x) {exp(x)/(1+exp(x))}
-  
   # Fix parameters
   beta0 <- -3
   beta1 <- 0.03
   beta2 <- 0.7
-  # beta0 <- 0.2
-  # beta1 <- 0.003
-  # beta2 <- 0.1
   
   # Sample baseline covariates
   # `antib` varies from zero to one
@@ -64,14 +75,9 @@ generate_data_dr <- function(n, beta, mono_form) {
 #' @return Binary; is null rejected (1) or not (0)
 test_regression <- function(dat, params) {
   
-  model <- glm(
-    infected ~ bmi + sex + antib,
-    data = dat,
-    family = "binomial"
-    # family = binomial(link="identity")
-  )
-  
-  reject <- as.numeric(summary(model)$coefficients["antib",4]<0.05)
+  model <- glm(infected~bmi+sex+antib, data=dat, family="binomial")
+  one_sided_p <- pnorm(summary(model)$coefficients["antib",3], lower.tail=F)
+  reject <- as.numeric(one_sided_p<0.05)
   
   return (reject)
   
@@ -87,48 +93,100 @@ test_regression <- function(dat, params) {
 #' @return Binary; is null rejected (1) or not (0)
 slope_dr <- function(dat, params) {
   
-  if (params$est=="glm") {
+  Theta_hat_constructor <- function(dat) {
     
-    Theta_hat_constr <- function(dat) {
-      model <- glm(
-        infected ~ bmi + sex + antib,
-        data = dat,
-        family = "binomial"
-        # family = binomial(link="identity")
+    # Run model and extract coefficients
+    model <- glm(infected~bmi+sex+antib, data=dat, family="binomial")
+    coeff <- summary(model)$coefficients
+    beta0_hat <- coeff["(Intercept)",1]
+    beta1_hat <- coeff["bmi",1]
+    beta2_hat <- coeff["sex",1]
+    beta3_hat <- coeff["antib",1]
+    
+    # theta_hat <- function(x) {
+    #   dat %<>% mutate(
+    #     E_hat = expit(beta0_hat + beta1_hat*bmi + beta2_hat*sex + beta3_hat*x)
+    #   )
+    #   return (mean(dat$E_hat))
+    # }
+    
+    Theta_hat <- function(x) {
+      dat %<>% mutate(
+        t = log(
+          (1+exp(beta0_hat + beta1_hat*bmi + beta2_hat*sex + beta3_hat*x)) /
+          (1+exp(beta0_hat + beta1_hat*bmi + beta2_hat*sex))
+        )
       )
-      beta <- summary(model)$coefficients["antib",1]
-      
-      dat <- generate_data_dr(1000,0.6,"square")
-      return (function(x) {
-        0.5*beta*(x^2)
-      })
+      return ((beta3_hat^-1)*mean(dat$t))
     }
     
-  } else if (params$est=="sm spline") {
-    
-    Theta_hat_constr <- function(dat) {
-      
-      model <- gam(
-        infected ~ bmi + sex + s(antib, fx=FALSE, bs="cr", m=2, pc=0),
-        data = dat,
-        family = "binomial"
-        # family = binomial(link="identity")
-      )
-      
-      spline_vals <- as.numeric(predict(
-        model,
-        newdata = list(bmi=rep(25,101), sex=rep(0,101), antib=seq(0,1,0.01)),
-        type = "terms"
-      )[,3])
-      
-      return (function(x) {
-        0.01 * sum(spline_vals[1:(round(100*round(x,2)+1,0))])
-      })
-    }
+    return (Vectorize(Theta_hat))
     
   }
   
-  Theta_hat <- Vectorize(Theta_hat_constr(dat))
+  Theta_hat <- Theta_hat_constructor(dat)
+  
+  # Theta_hat <- Vectorize(
+  #   function (a) { integrate(theta_hat, lower=0, upper=a)$value }
+  # )
+  
+
+  
+  # !!!!! May need to subtract a constant such that theta(0)=0
+  
+
+
+  
+  
+  # if (params$est=="gcomp glm") {
+  #   
+  #   
+  #   integrate(
+  #     function(x) { return (theta_hat(x)) },
+  #     lower = 0,
+  #     upper = a
+  #   )$value
+  #   
+  #   
+  # } else if (params$est=="glm") {
+  #   
+  #   Theta_hat_constr <- function(dat) {
+  #     model <- glm(
+  #       infected ~ bmi + sex + antib,
+  #       data = dat,
+  #       family = "binomial"
+  #     )
+  #     beta <- summary(model)$coefficients["antib",1]
+  #     
+  #     return (function(x) {
+  #       0.5*beta*(x^2)
+  #     })
+  #   }
+  #   
+  # } else if (params$est=="sm spline") {
+  #   
+  #   Theta_hat_constr <- function(dat) {
+  #     
+  #     model <- gam(
+  #       infected ~ bmi + sex + s(antib, fx=FALSE, bs="cr", m=2, pc=0),
+  #       data = dat,
+  #       family = "binomial"
+  #     )
+  #     
+  #     spline_vals <- as.numeric(predict(
+  #       model,
+  #       newdata = list(bmi=rep(25,101), sex=rep(0,101), antib=seq(0,1,0.01)),
+  #       type = "terms"
+  #     )[,3])
+  #     
+  #     return (function(x) {
+  #       0.01 * sum(spline_vals[1:(round(100*round(x,2)+1,0))])
+  #     })
+  #   }
+  #   
+  # }
+  # 
+  # Theta_hat <- Vectorize(Theta_hat_constr(dat))
   
   x <- dat$antib
   mu_2n <- mean(x^2)
@@ -138,7 +196,7 @@ slope_dr <- function(dat, params) {
   # Define the statistic to bootstrap
   bootstat <- function(dat,indices) {
     d <- dat[indices,]
-    Theta_hat <- Vectorize(Theta_hat_constr(d))
+    Theta_hat <- Theta_hat_constructor(d)
     x <- dat$antib
     mu_2n <- mean(x^2)
     mu_3n <- mean(x^3)

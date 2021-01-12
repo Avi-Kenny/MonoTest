@@ -46,13 +46,15 @@ if (run_main) {
     
     # Simulation 1: compare all methods
     level_set_1 <- list(
-      n = c(500,1000,1500,2000),
-      beta = c(0,0.6),
-      mono_form = c("identity", "square", "sqrt", "step_0.2", "step_0.8"),
+      # n = 1000,
+      n = c(500,1000),
+      beta = c(0,0.7),
+      mono_form = c("identity"),
+      # mono_form = c("identity", "square", "sqrt", "step_0.2"),
       test = list(
         "Wald" = list(type="test_regression", params=NULL),
-        "Slope: glm" = list(type="slope_dr", params=list(est="glm")),
-        "Slope: sm spline" = list(type="slope_dr", params=list(est="sm spline"))
+        "Slope: glm" = list(type="slope_dr", params=list(est="glm"))
+        # "Slope: sm spline" = list(type="slope_dr", params=list(est="sm spline"))
       )
     )
     
@@ -84,8 +86,8 @@ if (run_main) {
   
   # Use these commands to run on Slurm:
   # sbatch --export=run='first',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
-  # sbatch --depend=afterok:11 --array=1-540 --export=cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
-  # sbatch --depend=afterok:12 --export=run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+  # sbatch --depend=afterok:11 --array=1-48 --export=run='main',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+  # sbatch --depend=afterok:58408889 --export=run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
   
   run_on_cluster(
     
@@ -94,10 +96,9 @@ if (run_main) {
       sim <- new_sim()
       
       sim %<>% set_config(
-        num_sim = 1000,
-        # parallel = "none",
-        parallel = "outer",
-        stop_at_error = FALSE,
+        num_sim = 500,
+        # parallel = "outer",
+        # stop_at_error = TRUE, # !!!!!
         packages = c("dplyr", "boot", "mgcv")
       )
       
@@ -105,6 +106,8 @@ if (run_main) {
       
       # Add functions to simulation object
       sim %<>% add_creator(generate_data_dr)
+      sim %<>% add_method(expit)
+      sim %<>% add_method(intexpit)
       sim %<>% add_method(test_regression)
       sim %<>% add_method(slope_dr)
 
@@ -121,6 +124,7 @@ if (run_main) {
     
     main = {
       sim %<>% run()
+      # sim %<>% update()
     },
     
     last = {},
