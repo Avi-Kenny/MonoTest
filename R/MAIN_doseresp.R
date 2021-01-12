@@ -46,15 +46,14 @@ if (run_main) {
     
     # Simulation 1: compare all methods
     level_set_1 <- list(
-      # n = 1000,
       n = c(500,1000),
       beta = c(0,0.7),
-      mono_form = c("identity"),
+      mono_form = c("identity", "square"),
       # mono_form = c("identity", "square", "sqrt", "step_0.2"),
       test = list(
         "Wald" = list(type="test_regression", params=NULL),
-        "Slope: glm" = list(type="slope_dr", params=list(est="glm"))
-        # "Slope: sm spline" = list(type="slope_dr", params=list(est="sm spline"))
+        "Slope: glm" = list(type="slope_dr", params=list(subtype="glm")),
+        "Slope: ss" = list(type="slope_dr", params=list(subtype="ss"))
       )
     )
     
@@ -96,7 +95,7 @@ if (run_main) {
       sim <- new_sim()
       
       sim %<>% set_config(
-        num_sim = 500,
+        num_sim = 1000,
         # parallel = "outer",
         # stop_at_error = TRUE, # !!!!!
         packages = c("dplyr", "boot", "mgcv")
