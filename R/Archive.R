@@ -54,3 +54,55 @@ sim %<>% add_method("ws_test_d", function(dat, n) {
 sim %<>% add_method("P test", function(dat, n) {
   # !!!!! TO DO
 })
+
+
+
+############################################################.
+##### TESTING: compare distributions of test statistic #####
+############################################################.
+
+if (run_testing) {
+  
+  n <- 50
+  reps <- 1000
+  distribution_exact <- c()
+  for (i in 1:reps) {
+    x <- runif(n)
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    beta_n <- mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x))
+    distribution_exact <- c(distribution_exact,beta_n)
+  }
+  
+  beta_n <- function(dat,indices) {
+    x <- dat[indices]
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    return (mean((mu_2n*x^2 - mu_3n*x)*Theta_hat(x)))
+  }
+  boot_obj <- boot(data=runif(n), statistic=beta_n, R=reps)
+  
+  beta_n_mixed <- function(dat,indices) {
+    x <- dat[indices]
+    Theta_hat <- ecdf(x)
+    mu_2n <- mean(x^2)
+    mu_3n <- mean(x^3)
+    return (mean((mu_2n*x^2 - mu_3n*x)*(Theta_hat(x)-x)))
+  }
+  boot_obj_mixed <- boot(data=runif(n), statistic=beta_n_mixed, R=reps)
+  
+  print(sd(distribution_exact))
+  print(sd(boot_obj$t))
+  print(sd(boot_obj_mixed$t))
+  
+  ggplot(
+    data.frame(
+      x = c(distribution_exact,boot_obj$t,boot_obj_mixed$t),
+      type = rep(c("Exact", "Full bootstrap", "Mixed bootstrap"), each=reps)
+    ),
+    aes(x=x)
+  ) + geom_histogram() + facet_wrap(~type)
+  
+}
