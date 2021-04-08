@@ -74,8 +74,8 @@ if (Sys.getenv("run") %in% c("first", "")) {
     level_set_1 <- list(
       n = c(10,20,30,40,50),
       test = list(
-        "Z test" = list(type="ws_test_z", params=list(crit_val="simulated")),
-        "L test" = list(type="ws_test_l", params=list(crit_val="simulated")),
+        "Z test" = list(type="test_sw_z", params=list(crit_val="simulated")),
+        "L test" = list(type="test_sw_l", params=list(crit_val="simulated")),
         "App 2, p_star=U(0,1)" = list(
           type = "slope",
           params = list(subtype="asymptotic", p_star="U(0,1)")
@@ -237,8 +237,8 @@ if (cfg$run_or_update=="run") {
       if (cfg$setting=="density") {
         
         # Add functions
-        sim %<>% add_method(ws_test_z)
-        sim %<>% add_method(ws_test_l)
+        sim %<>% add_method(test_sw_z)
+        sim %<>% add_method(test_sw_l)
         
         # Generate beta_n distribution and add as a simulation constant
         sim %<>% add_constants("beta_n_distr"=beta_n_distr(sim$levels$n))
@@ -265,7 +265,8 @@ if (cfg$run_or_update=="run") {
         # Simulation script
         sim %<>% set_script(function() {
           dat <- generate_data_dr(L$n, L$alpha_3, L$mono_form, L$sampling)
-          reject <- do.call(L$test$type, list(dat, L$test$params))
+          alt_type <- "incr" # Can change later
+          reject <- do.call(L$test$type, list(dat, alt_type, L$test$params))
           return (list("reject"=reject))
         })
         
