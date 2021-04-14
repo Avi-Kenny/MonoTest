@@ -158,12 +158,136 @@ if(cfg$setting=="density") {
 if(cfg$setting=="regression") {
   
   #' @param params A list, containing the following:
-  #'   - `p1` text
-  #'   - `p2` text
-  #' @notes
-  #'   - Note
+  #'   - `G` Choice of the G function; one of c("identity", "marginal")
+  #'   - `P_star` Choice of P_star distribution; one of c("uniform", "marginal")
   test2 <- function(dat, alt_type="incr", params) {
-    #
+    
+    # dat <- generate_data(n=20, alpha_3=0, sigma=0.1, mono_form="square")
+    
+    a <- dat$a
+    y <- dat$y
+    tau <- 1
+    n <- length(a)
+    
+    # Variant 1
+    if (params$G=="identity" && params$P_star=="uniform") {
+      
+      f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
+      beta_n <- mean(
+        (y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72)
+      )
+      
+      var_est <- mean(
+        ((y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72))^2
+      )
+      
+    }
+    
+    # Variant 2
+    if (params$G=="marginal" && params$P_star=="uniform") {
+      
+      calc_beta_n <- function(dat) {
+        
+        a <- dat$a
+        y <- dat$y
+
+        term1 <- 0
+        term2 <- 0
+        term3 <- 0
+        term4 <- 0
+        for (i in 1:n) {
+          for (j in 1:n) {
+            
+            term1 <- term1 + (1 - max(a[i],a[j])/tau)
+            term4 <- term4 + y[i]*(1 - max(a[i],a[j])/tau)
+            
+            for (k in 1:n) {
+              term2 <- term2 + y[i]*(1 - max(a[i],a[j],a[k])/tau)
+              term3 <- term3 + (1 - max(a[i],a[j],a[k])/tau)
+            }
+            
+          }
+        }
+        term1 <- term1 / (n^2)
+        term2 <- term2 / (n^3)
+        term3 <- term3 / (n^3)
+        term4 <- term4 / (n^2)
+        
+        # Test stat
+        beta_n <- term1*term2 - term3*term4
+        return(beta_n)
+
+      }
+      
+      # Calculate test stat
+      beta_n <- calc_beta_n(dat)
+      
+      # # Calculate variance via the bootstrap
+      # my_stat <- function(dat,indices) {
+      #   d <- dat[indices,]
+      #   return (calc_beta_n(d))
+      # }
+      # boot_obj <- boot(data=dat, statistic=my_stat, R=100) # !!!!! Parameterize boot_reps
+      # var_est <- var(boot_obj$t)[1,1]*n
+      
+      # Calculate variance via the mixed bootstrap
+      grid <- seq(0,1,0.01)
+      G_n <- ecdf(a)
+      Gamma_n <- function(x) {
+        mean(y * as.numeric(a<=x))
+      }
+      lambda2 <- mean(sapply(grid, function(x) {(G_n(x))^2}))
+      lambda3 <- mean(sapply(grid, function(x) {(G_n(x))^3}))
+      my_stat <- function(dat,indices) {
+        d <- dat[indices,]
+        G_n_boot <- ecdf(d$a)
+        lambda2_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^2}))
+        lambda3_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^3}))
+        beta_n_boot <- mean(sapply(grid, function(x) {
+          term1 <- (lambda2_boot*(G_n_boot(x))^2 - lambda3_boot*G_n_boot(x)) *
+            Gamma_n(x)
+          term2 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
+            Gamma_n(x)
+          term3 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
+            mean(d$y*as.numeric(d$a<=x))
+          return(term1 - 2*term2 + term3)
+        }))
+        return(beta_n_boot)
+      }
+      boot_obj <- boot(data=dat, statistic=my_stat, R=100) # !!!!! Parameterize boot_reps
+      var_est <- var(boot_obj$t)[1,1]*n
+      
+    }
+    
+    # Variant 3
+    if (params$G=="identity" && params$P_star=="marginal") {
+      
+      # beta_n <- 999
+      # var_est <- 999
+      
+    }
+    
+    # Variant 4
+    if (params$G=="marginal" && params$P_star=="marginal") {
+      
+      # beta_n <- 999
+      # var_est <- 999
+      
+    }
+    
+    # Calculate critical value and accept/reject
+    # !!!!! Functionize the critical value calculation for asymptotic/bootstrap
+    z <- (sqrt(n)*beta_n) / sqrt(var_est)
+    if (alt_type=="incr") {
+      crit_val <- qnorm(0.95)
+      # return(list(reject=as.numeric(z>crit_val), z=z))
+      return(as.numeric(z>crit_val))
+    }
+    if (alt_type=="decr") {
+      crit_val <- qnorm(0.05)
+      return(as.numeric(z<crit_val))
+    }
+
   }
   
 }

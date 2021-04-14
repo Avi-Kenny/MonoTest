@@ -87,7 +87,45 @@ if(cfg$setting=="density") {
 
 if(cfg$setting=="regression") {
   
-  # !!!!! TO DO
+  #' Generate data
+  #' 
+  #' @param n Sample size
+  #' @param alpha_3 Height of the dose-response curve
+  #' @param sigma Standard deviation of normal error
+  #' @param mono_form Functional form of the regression curve; should be a
+  #'     monotone increasing function with domain [0,1] such that f(0)=0 and
+  #'     f(1)=1; choices are c("identity", "square", "sqrt", "step_0.2",
+  #'     "step_0.8")
+  #' @param a_distr Beta parameters for marginaldistribution of A; a list of the
+  #'     form list(shape1=3, shape2=4)
+  #' @return A dataframe representing a study population
+  generate_data <- function(n, alpha_3, sigma, mono_form, a_distr) {
+    
+    # Sample baseline covariates
+    a <- rbeta(n, shape1=a_distr$shape1, shape2=a_distr$shape2)
+    
+    # Set transformation function
+    if (mono_form=="identity") {
+      mono_f <- function(x) {x}
+    } else if (mono_form=="square") {
+      mono_f <- function(x) {x^2}
+    } else if (mono_form=="sqrt") {
+      mono_f <- function(x) {sqrt(x)}
+    } else if (mono_form=="step_0.2") {
+      mono_f <- function(x) {as.numeric(x>0.2)}
+    } else if (mono_form=="step_0.8") {
+      mono_f <- function(x) {as.numeric(x>0.8)}
+    } else {
+      stop("mono_form incorrectly specified")
+    }
+    
+    y <- alpha_3*mono_f(a) + rnorm(n, mean=0, sd=sigma)
+    
+    dat <- data.frame(a=a, y=y)
+    
+    return (dat)
+    
+  }
   
 }
 
@@ -136,7 +174,7 @@ if(cfg$setting=="doseresp") {
     } else if (mono_form=="step_0.8") {
       mono_f <- function(x) {as.numeric(x>0.8)}
     } else {
-      stop("mono_f incorrectly specified")
+      stop("mono_form incorrectly specified")
     }
     
     probs <- expit(alpha_0 + alpha_1*w1 + alpha_2*w2 + alpha_3*mono_f(a))

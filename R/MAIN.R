@@ -9,13 +9,15 @@
 
 # Set global config
 cfg <- list(
-  setting = "density", # hazard regression doseresp
+  setting = "regression", # hazard regression doseresp
   level_set_which = "level_set_1",
   run_or_update = "run",
-  num_sim = 1000,
+  num_sim = 1,
   pkgs = c("simba", "ggplot2", "dplyr", "boot", "car", "mgcv", "kdensity",
            "memoise"),
-  pkgs_nocluster = c("ggplot2")
+  pkgs_nocluster = c("ggplot2"),
+  parallel = "outer", # none
+  stop_at_error = FALSE
 )
 
 # Set cluster config
@@ -44,7 +46,7 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
 }
 
 # Set cluster packages
-cfg$pkgs_cluster <- cfg$pkg[!(cfg$pkg %in% cfg$pkgs_nocluster)]
+cfg$pkgs_cluster <- cfg$pkgs[!(cfg$pkgs %in% cfg$pkgs_nocluster)]
 
 # Load packages (if running locally)
 if (load_pkgs_local) {
@@ -58,7 +60,9 @@ library(simba)
 source("generate_data.R")
 source("test1.R")
 source("test2.R")
-source(paste0("fns_", cfg$setting,".R"))
+if (cfg$setting %in% c("density", "doseresp")) {
+  source(paste0("fns_", cfg$setting,".R"))
+}
 
 
 
@@ -77,11 +81,11 @@ if (Sys.getenv("run") %in% c("first", "")) {
         "Z test" = list(type="test_sw_z", params=list(crit_val="simulated")),
         "L test" = list(type="test_sw_l", params=list(crit_val="simulated")),
         "App 2, p_star=U(0,1)" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="U(0,1)")
         ),
         "App 2, p_star=P_0" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="P_0")
         )
         # "slope (SS-adapted)" = list(type = "slope", params = list(subtype="SS-adapted")),
@@ -97,17 +101,17 @@ if (Sys.getenv("run") %in% c("first", "")) {
     level_set_2 <- list(
       n = c(10,30,50),
       test = list(
-        "0.0" = list(type="cuml_incr", params=list(delta=1/3,wts=c(1.0,0.0))),
-        "0.1" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.9,0.1))),
-        "0.2" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.8,0.2))),
-        "0.3" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.7,0.3))),
-        "0.4" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.6,0.4))),
-        "0.5" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.5,0.5))),
-        "0.6" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.4,0.6))),
-        "0.7" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.3,0.7))),
-        "0.8" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.2,0.8))),
-        "0.9" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.1,0.9))),
-        "1.0" = list(type="cuml_incr", params=list(delta=1/3,wts=c(0.0,1.0)))
+        "0.0" = list(type="test1", params=list(delta=1/3,wts=c(1.0,0.0))),
+        "0.1" = list(type="test1", params=list(delta=1/3,wts=c(0.9,0.1))),
+        "0.2" = list(type="test1", params=list(delta=1/3,wts=c(0.8,0.2))),
+        "0.3" = list(type="test1", params=list(delta=1/3,wts=c(0.7,0.3))),
+        "0.4" = list(type="test1", params=list(delta=1/3,wts=c(0.6,0.4))),
+        "0.5" = list(type="test1", params=list(delta=1/3,wts=c(0.5,0.5))),
+        "0.6" = list(type="test1", params=list(delta=1/3,wts=c(0.4,0.6))),
+        "0.7" = list(type="test1", params=list(delta=1/3,wts=c(0.3,0.7))),
+        "0.8" = list(type="test1", params=list(delta=1/3,wts=c(0.2,0.8))),
+        "0.9" = list(type="test1", params=list(delta=1/3,wts=c(0.1,0.9))),
+        "1.0" = list(type="test1", params=list(delta=1/3,wts=c(0.0,1.0)))
       ),
       true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
     )
@@ -116,15 +120,15 @@ if (Sys.getenv("run") %in% c("first", "")) {
     level_set_3 <- list(
       n = c(10,30,50),
       test = list(
-        "1/2" = list(type="cuml_incr", params=list(delta=1/2,wts="equal")),
-        "1/3" = list(type="cuml_incr", params=list(delta=1/3,wts="equal")),
-        "1/4" = list(type="cuml_incr", params=list(delta=1/4,wts="equal")),
-        "1/5" = list(type="cuml_incr", params=list(delta=1/5,wts="equal")),
-        "1/6" = list(type="cuml_incr", params=list(delta=1/6,wts="equal")),
-        "1/7" = list(type="cuml_incr", params=list(delta=1/7,wts="equal")),
-        "1/8" = list(type="cuml_incr", params=list(delta=1/8,wts="equal")),
-        "1/9" = list(type="cuml_incr", params=list(delta=1/9,wts="equal")),
-        "1/10" = list(type="cuml_incr", params=list(delta=1/10,wts="equal"))
+        "1/2" = list(type="test1", params=list(delta=1/2,wts="equal")),
+        "1/3" = list(type="test1", params=list(delta=1/3,wts="equal")),
+        "1/4" = list(type="test1", params=list(delta=1/4,wts="equal")),
+        "1/5" = list(type="test1", params=list(delta=1/5,wts="equal")),
+        "1/6" = list(type="test1", params=list(delta=1/6,wts="equal")),
+        "1/7" = list(type="test1", params=list(delta=1/7,wts="equal")),
+        "1/8" = list(type="test1", params=list(delta=1/8,wts="equal")),
+        "1/9" = list(type="test1", params=list(delta=1/9,wts="equal")),
+        "1/10" = list(type="test1", params=list(delta=1/10,wts="equal"))
       ),
       true_density = c("f(x)=1", "f(x)=2x", "f(x)=ke^x")
     )
@@ -134,15 +138,15 @@ if (Sys.getenv("run") %in% c("first", "")) {
       n = c(5,10,15,20),
       test = list(
         "App 2, SS-adapted" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="SS-adapted")
         ),
         "App 2, p_star=U(0,1)" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="U(0,1)")
         ),
         "App 2, p_star=P_0" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="P_0")
         )
       ),
@@ -154,11 +158,11 @@ if (Sys.getenv("run") %in% c("first", "")) {
       n = c(10,20,30),
       test = list(
         "App 2, p_star=U(0,1)" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="U(0,1)")
         ),
         "App 2, p_star=P_0" = list(
-          type = "slope",
+          type = "test2",
           params = list(subtype="asymptotic", p_star="P_0")
         )
       ),
@@ -173,7 +177,31 @@ if (Sys.getenv("run") %in% c("first", "")) {
   }
   
   if (cfg$setting=="regression") {
-    #
+    
+    # Compare four variants
+    level_set_1 <- list(
+      # n = c(20,40,60),
+      n = 20,
+      # alpha_3 = c(0,0.7),
+      alpha_3 = 0.7,
+      sigma = 0.1,
+      # mono_form = c("identity", "square", "step_0.2"),
+      mono_form = "identity",
+      a_distr = list(
+        # "U" = list(shape1=0.3, shape2=0.3),
+        # "decr" = list(shape1=0.7, shape2=1.3),
+        # "incr" = list(shape1=1.3, shape2=0.7),
+        # "unif" = list(shape1=1, shape2=1),
+        "spike" = list(shape1=40, shape2=40)
+      ),
+      test = list(
+        "App_2: var 1" = list(type="test2",
+                              params=list(G="identity", P_star="uniform")),
+        "App_2: var 2" = list(type="test2",
+                              params=list(G="marginal", P_star="uniform"))
+      )
+    )
+    
   }
   
   if (cfg$setting=="doseresp") {
@@ -182,12 +210,12 @@ if (Sys.getenv("run") %in% c("first", "")) {
     level_set_1 <- list(
       n = c(500,1000),
       alpha_3 = c(0,0.7),
-      mono_form = c("identity", "square", "step_0.2"), # "sqrt"
+      mono_form = c("identity", "square", "step_0.2"),
       test = list(
         "Wald" = list(type="test_wald", params=NULL),
-        "App_2: glm" = list(type="test_app2_dr",
+        "App_2: glm" = list(type="test2",
                             params=list(subtype="glm", boot_reps=100)), # 1000
-        "App_2: ss" = list(type="test_app2_dr",
+        "App_2: ss" = list(type="test2",
                            params=list(subtype="ss", boot_reps=100)) # 1000
       ),
       sampling = list(
@@ -209,7 +237,7 @@ if (Sys.getenv("run") %in% c("first", "")) {
 
 # Use these commands to run on Slurm:
 # sbatch --export=run='first',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
-# sbatch --depend=afterok:11 --array=1-540 --export=run='main',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+# sbatch --depend=afterok:11 --array=1-24000 --export=run='main',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
 # sbatch --depend=afterok:12 --export=run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
 
 if (cfg$run_or_update=="run") {
@@ -222,8 +250,9 @@ if (cfg$run_or_update=="run") {
       sim <- new_sim()
       sim %<>% set_config(
         num_sim = cfg$num_sim,
-        parallel = "outer",
-        stop_at_error = TRUE,
+        parallel = cfg$parallel,
+        stop_at_error = cfg$stop_at_error,
+        seed = 3,
         packages = cfg$pkgs_cluster
       )
       sim <- do.call(set_levels, c(list(sim), level_set))
@@ -254,6 +283,22 @@ if (cfg$run_or_update=="run") {
         
       }
       
+      # Code specific to "regression" setting
+      if (cfg$setting=="regression") {
+        
+        # Add functions
+        # sim %<>% add_method(test_sw_z)
+        
+        # Simulation script
+        sim %<>% set_script(function() {
+          dat <- generate_data(L$n, L$alpha_3, L$sigma, L$mono_form, L$a_distr)
+          reject <- do.call(L$test$type, list(dat, "incr", L$test$params))
+          return (list("reject"=reject))
+          # return (list("reject"=reject$reject, "z"=reject$z))
+        })
+        
+      }
+      
       # Code specific to "doseresp" setting
       if (cfg$setting=="doseresp") {
         
@@ -278,7 +323,17 @@ if (cfg$run_or_update=="run") {
       sim %<>% run()
     },
     
-    last = {},
+    last = {
+      sim %>% summary() %>% print()
+      # mean(sim$results$reject)
+      mean(filter(sim$results, n==20)$reject)
+      mean(filter(sim$results, n==40)$reject)
+      mean(filter(sim$results, n==60)$reject)
+    # ggplot(data.frame(x=filter(sim$results, TRUE)$z), aes(x=x)) + geom_histogram()
+      ggplot(data.frame(x=filter(sim$results, n==20)$z), aes(x=x)) + geom_histogram()
+      ggplot(data.frame(x=filter(sim$results, n==40)$z), aes(x=x)) + geom_histogram()
+      ggplot(data.frame(x=filter(sim$results, n==60)$z), aes(x=x)) + geom_histogram()
+    },
     
     cluster_config = cluster_config
     
