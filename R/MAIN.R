@@ -12,11 +12,11 @@ cfg <- list(
   setting = "regression", # hazard regression doseresp
   level_set_which = "level_set_1",
   run_or_update = "run",
-  num_sim = 1,
+  num_sim = 1000,
   pkgs = c("simba", "ggplot2", "dplyr", "boot", "car", "mgcv", "kdensity",
            "memoise"),
-  pkgs_nocluster = c("ggplot2"),
-  parallel = "outer", # none
+  pkgs_nocluster = c("ggplot2", "viridis"),
+  parallel = "none", # none
   stop_at_error = FALSE
 )
 
@@ -180,25 +180,34 @@ if (Sys.getenv("run") %in% c("first", "")) {
     
     # Compare four variants
     level_set_1 <- list(
-      # n = c(20,40,60),
-      n = 20,
-      # alpha_3 = c(0,0.7),
-      alpha_3 = 0.7,
+      n = 30,
+      alpha_3 = c(0,0.25,0.5),
       sigma = 0.1,
-      # mono_form = c("identity", "square", "step_0.2"),
-      mono_form = "identity",
+      mono_form = c("identity", "square", "step_0.2"),
       a_distr = list(
-        # "U" = list(shape1=0.3, shape2=0.3),
-        # "decr" = list(shape1=0.7, shape2=1.3),
+        "U" = list(shape1=0.3, shape2=0.3),
+        "decr" = list(shape1=0.7, shape2=1.3),
         # "incr" = list(shape1=1.3, shape2=0.7),
-        # "unif" = list(shape1=1, shape2=1),
+        "unif" = list(shape1=1, shape2=1),
         "spike" = list(shape1=40, shape2=40)
       ),
       test = list(
-        "App_2: var 1" = list(type="test2",
-                              params=list(G="identity", P_star="uniform")),
-        "App_2: var 2" = list(type="test2",
-                              params=list(G="marginal", P_star="uniform"))
+        "App_2: var 1" = list(
+          type = "test2",
+          params = list(G="identity", P_star="uniform",
+                          var="boot", bootreps=100)),
+        "App_2: var 2" = list(
+          type = "test2",
+          params = list(G="marginal", P_star="uniform",
+                        var="boot", bootreps=100)),
+        "App_2: var 3" = list(
+          type = "test2",
+          params = list(G="identity", P_star="marginal",
+                        var="boot", bootreps=100)),
+        "App_2: var 4" = list(
+          type = "test2",
+          params = list(G="marginal", P_star="marginal",
+                        var="boot", bootreps=100))
       )
     )
     
@@ -294,7 +303,6 @@ if (cfg$run_or_update=="run") {
           dat <- generate_data(L$n, L$alpha_3, L$sigma, L$mono_form, L$a_distr)
           reject <- do.call(L$test$type, list(dat, "incr", L$test$params))
           return (list("reject"=reject))
-          # return (list("reject"=reject$reject, "z"=reject$z))
         })
         
       }
@@ -325,14 +333,6 @@ if (cfg$run_or_update=="run") {
     
     last = {
       sim %>% summary() %>% print()
-      # mean(sim$results$reject)
-      mean(filter(sim$results, n==20)$reject)
-      mean(filter(sim$results, n==40)$reject)
-      mean(filter(sim$results, n==60)$reject)
-    # ggplot(data.frame(x=filter(sim$results, TRUE)$z), aes(x=x)) + geom_histogram()
-      ggplot(data.frame(x=filter(sim$results, n==20)$z), aes(x=x)) + geom_histogram()
-      ggplot(data.frame(x=filter(sim$results, n==40)$z), aes(x=x)) + geom_histogram()
-      ggplot(data.frame(x=filter(sim$results, n==60)$z), aes(x=x)) + geom_histogram()
     },
     
     cluster_config = cluster_config
@@ -359,6 +359,60 @@ if (cfg$run_or_update=="update") {
     cluster_config = cluster_config
     
   )
+  
+}
+
+
+
+##########################################################.
+##### VIZ (REGRESSION): Sim #1 (compare all methods) #####
+##########################################################.
+
+if (FALSE) {
+  
+  # sim <- readRDS("sim.simba")
+  
+  summ <- sim %>% summary(mean=list(name="power",x="reject"))
+  summ %<>% mutate(
+    test = case_when(
+      test=="App_2: var 1" ~ "V1: G0=id, Pstar=unif",
+      test=="App_2: var 2" ~ "V2: G0=marg, Pstar=unif",
+      test=="App_2: var 3" ~ "V3: G0=id, Pstar=marg",
+      test=="App_2: var 4" ~ "V4: G0=marg, Pstar=marg"
+    )
+  )
+  
+  # Visualize results (alpha_3==0)
+  # Export 10" x 5"
+  ggplot(summ, aes(x=alpha_3, y=power, color=factor(test))) +
+    geom_line() + geom_point() +
+    facet_grid(rows=vars(mono_form), cols=vars(a_distr)) +
+    scale_color_manual(values=c("#D55E00", "#E69F00", "turquoise", "#009E73")) +
+    labs(
+      x = "Effect size", y = "Power", color = "Test type",
+      title = paste0("Power of tests for constant vs. monotone regression ",
+                     "(n=30; 500 sims per level)")
+    )
+  
+  # Plot of densities used
+  # Export at 8"x3"
+  grid <- seq(0,1,0.01)
+  density_labels <- c("U-shaped","Decreasing","Uniform","Spiked")
+  ggplot(
+    data.frame(
+      x = rep(grid,4),
+      y = c(dbeta(grid, shape1=0.3, shape2=0.3),
+            dbeta(grid, shape1=0.7, shape2=1.3),
+            dbeta(grid, shape1=1.0, shape2=1.0),
+            dbeta(grid, shape1=40, shape2=40)),
+      density = factor(rep(density_labels, each=101), levels=density_labels)
+    ),
+    aes(x=x, y=y)
+  ) +
+    geom_line() +
+    facet_wrap(~density, ncol=4) +
+    labs(x="X", y="Density")
+  
   
 }
 

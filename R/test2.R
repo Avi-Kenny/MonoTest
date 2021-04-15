@@ -160,41 +160,46 @@ if(cfg$setting=="regression") {
   #' @param params A list, containing the following:
   #'   - `G` Choice of the G function; one of c("identity", "marginal")
   #'   - `P_star` Choice of P_star distribution; one of c("uniform", "marginal")
+  #'   - `var` Variance estimation method; one of c("asymptotic", "boot",
+  #'       "mixed boot")
+  #'   - `bootreps` Number of bootstrap replicates to run
   test2 <- function(dat, alt_type="incr", params) {
     
-    # dat <- generate_data(n=20, alpha_3=0, sigma=0.1, mono_form="square")
-    
-    a <- dat$a
-    y <- dat$y
+    beta_n <- NA
+    var_est <- NA
     tau <- 1
-    n <- length(a)
+    n <- length(dat$a)
     
     # Variant 1
     if (params$G=="identity" && params$P_star=="uniform") {
       
-      f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
-      beta_n <- mean(
-        (y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72)
-      )
+      calc_beta_n <- function(d) {
+        a <- d$a
+        y <- d$y
+        f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
+        mean((y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72))
+      }
       
-      var_est <- mean(
-        ((y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72))^2
-      )
+      if (params$var=="asymptotic") {
+        a <- dat$a
+        y <- dat$y
+        f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
+        var_est <- mean(
+          ((y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72))^2
+        )
+      }
       
     }
     
     # Variant 2
     if (params$G=="marginal" && params$P_star=="uniform") {
       
-      calc_beta_n <- function(dat) {
+      calc_beta_n <- function(d) {
         
-        a <- dat$a
-        y <- dat$y
+        a <- d$a
+        y <- d$y
 
-        term1 <- 0
-        term2 <- 0
-        term3 <- 0
-        term4 <- 0
+        term1 <- term2 <- term3 <- term4 <- 0
         for (i in 1:n) {
           for (j in 1:n) {
             
@@ -213,65 +218,80 @@ if(cfg$setting=="regression") {
         term3 <- term3 / (n^3)
         term4 <- term4 / (n^2)
         
-        # Test stat
-        beta_n <- term1*term2 - term3*term4
-        return(beta_n)
+        term1*term2 - term3*term4
 
       }
       
-      # Calculate test stat
-      beta_n <- calc_beta_n(dat)
-      
-      # # Calculate variance via the bootstrap
-      # my_stat <- function(dat,indices) {
-      #   d <- dat[indices,]
-      #   return (calc_beta_n(d))
-      # }
-      # boot_obj <- boot(data=dat, statistic=my_stat, R=100) # !!!!! Parameterize boot_reps
-      # var_est <- var(boot_obj$t)[1,1]*n
-      
       # Calculate variance via the mixed bootstrap
-      grid <- seq(0,1,0.01)
-      G_n <- ecdf(a)
-      Gamma_n <- function(x) {
-        mean(y * as.numeric(a<=x))
+      if (params$var=="mixed boot") {
+        grid <- seq(0,1,0.01)
+        G_n <- ecdf(dat$a)
+        lambda2 <- mean(sapply(grid, function(x) {(G_n(x))^2}))
+        lambda3 <- mean(sapply(grid, function(x) {(G_n(x))^3}))
+        my_stat <- function(dat_boot,indices) {
+          d <- dat_boot[indices,]
+          G_n_boot <- ecdf(d$a)
+          lambda2_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^2}))
+          lambda3_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^3}))
+          beta_n_boot <- mean(sapply(grid, function(x) {
+            term1 <- (lambda2_boot*(G_n_boot(x))^2 - lambda3_boot*G_n_boot(x)) *
+              Gamma_n(x)
+            term2 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
+              Gamma_n(x)
+            term3 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
+              mean(d$y*as.numeric(d$a<=x))
+            return(term1 - 2*term2 + term3)
+          }))
+          return(beta_n_boot)
+        }
+        boot_obj <- boot(data=dat, statistic=my_stat, R=params$bootreps)
+        var_est <- var(boot_obj$t)[1,1]*n
       }
-      lambda2 <- mean(sapply(grid, function(x) {(G_n(x))^2}))
-      lambda3 <- mean(sapply(grid, function(x) {(G_n(x))^3}))
-      my_stat <- function(dat,indices) {
-        d <- dat[indices,]
-        G_n_boot <- ecdf(d$a)
-        lambda2_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^2}))
-        lambda3_boot <- mean(sapply(grid, function(x) {(G_n_boot(x))^3}))
-        beta_n_boot <- mean(sapply(grid, function(x) {
-          term1 <- (lambda2_boot*(G_n_boot(x))^2 - lambda3_boot*G_n_boot(x)) *
-            Gamma_n(x)
-          term2 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
-            Gamma_n(x)
-          term3 <- (lambda2*(G_n(x))^2 - lambda3*G_n(x)) *
-            mean(d$y*as.numeric(d$a<=x))
-          return(term1 - 2*term2 + term3)
-        }))
-        return(beta_n_boot)
-      }
-      boot_obj <- boot(data=dat, statistic=my_stat, R=100) # !!!!! Parameterize boot_reps
-      var_est <- var(boot_obj$t)[1,1]*n
       
     }
     
     # Variant 3
     if (params$G=="identity" && params$P_star=="marginal") {
       
-      # beta_n <- 999
-      # var_est <- 999
+      calc_beta_n <- function(d) {
+        a <- d$a
+        y <- d$y
+        f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
+        Theta_n <- function(x) { mean(y * as.numeric(a<=x)) / f_n(a) }
+        lambda_2 <- mean(a^2)
+        lambda_3 <- mean(a^3)
+        mean((lambda_2*a^2 - lambda_3*a) * Theta_n(a))
+      }
       
     }
     
     # Variant 4
     if (params$G=="marginal" && params$P_star=="marginal") {
       
-      # beta_n <- 999
-      # var_est <- 999
+      calc_beta_n <- function(d) {
+        a <- d$a
+        y <- d$y
+        Gamma_n <- function(x) { mean(y * as.numeric(a<=x)) }
+        G_n <- ecdf(a)
+        lambda_2 <- mean((G_n(a))^2)
+        lambda_3 <- mean((G_n(a))^3)
+        mean((lambda_2*(G_n(a))^2 - lambda_3*G_n(a)) * Gamma_n(a))
+      }
+      
+    }
+    
+    # Calculate test statistic
+    beta_n <- calc_beta_n(dat)
+    
+    if (params$var=="boot") {
+      
+      # Calculate variance via the bootstrap
+      my_stat <- function(dat_boot,indices) {
+        d <- dat_boot[indices,]
+        return (calc_beta_n(d))
+      }
+      boot_obj <- boot(data=dat, statistic=my_stat, R=params$bootreps)
+      var_est <- var(boot_obj$t)[1,1]*n
       
     }
     
@@ -280,7 +300,6 @@ if(cfg$setting=="regression") {
     z <- (sqrt(n)*beta_n) / sqrt(var_est)
     if (alt_type=="incr") {
       crit_val <- qnorm(0.95)
-      # return(list(reject=as.numeric(z>crit_val), z=z))
       return(as.numeric(z>crit_val))
     }
     if (alt_type=="decr") {
