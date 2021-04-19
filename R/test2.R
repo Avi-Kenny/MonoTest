@@ -165,6 +165,9 @@ if(cfg$setting=="regression") {
   #'   - `bootreps` Number of bootstrap replicates to run
   test2 <- function(dat, alt_type="incr", params) {
     
+    # dat <- generate_data(n=100, alpha_3=0.5, sigma=0.1,
+    #                      mono_form="identity", a_distr=list(shape1=1, shape2=1))
+    
     beta_n <- NA
     var_est <- NA
     tau <- 1
@@ -177,6 +180,13 @@ if(cfg$setting=="regression") {
         a <- d$a
         y <- d$y
         f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
+        # # !!!!!
+        # lambda2 <- mean(seq(0,1,0.01)^2)
+        # lambda3 <- mean(seq(0,1,0.01)^3)
+        # mean(sapply(seq(0,1,0.01), function(x) {
+        #   (lambda2*x^2 - lambda3*x) * mean( (y*as.numeric(a<=x))/f_n(a) )
+        # }))
+        # # !!!!!
         mean((y/f_n(a)) * ((tau^2*a^2)/8 - (tau*a^3)/9 - tau^4/72))
       }
       
@@ -257,9 +267,9 @@ if(cfg$setting=="regression") {
         a <- d$a
         y <- d$y
         f_n <- kdensity(x=a, start="gumbel", kernel="gaussian")
-        Theta_n <- function(x) { mean(y * as.numeric(a<=x)) / f_n(a) }
         lambda_2 <- mean(a^2)
         lambda_3 <- mean(a^3)
+        Theta_n <- Vectorize(function(x) { mean((y*as.numeric(a<=x))/f_n(a)) })
         mean((lambda_2*a^2 - lambda_3*a) * Theta_n(a))
       }
       
@@ -271,10 +281,10 @@ if(cfg$setting=="regression") {
       calc_beta_n <- function(d) {
         a <- d$a
         y <- d$y
-        Gamma_n <- function(x) { mean(y * as.numeric(a<=x)) }
         G_n <- ecdf(a)
         lambda_2 <- mean((G_n(a))^2)
         lambda_3 <- mean((G_n(a))^3)
+        Gamma_n <- Vectorize(function(x) { mean(y*as.numeric(a<=x)) })
         mean((lambda_2*(G_n(a))^2 - lambda_3*G_n(a)) * Gamma_n(a))
       }
       
@@ -300,7 +310,9 @@ if(cfg$setting=="regression") {
     z <- (sqrt(n)*beta_n) / sqrt(var_est)
     if (alt_type=="incr") {
       crit_val <- qnorm(0.95)
-      return(as.numeric(z>crit_val))
+      return(list(reject=as.numeric(z>crit_val), z=z,
+                  beta_n=beta_n, var_est=var_est))
+      # return(as.numeric(z>crit_val))
     }
     if (alt_type=="decr") {
       crit_val <- qnorm(0.05)

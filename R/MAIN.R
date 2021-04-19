@@ -26,23 +26,22 @@ cluster_config <- list(
   dir = "/home/akenny/z.monotest"
 )
 
-# Load packages locally
-load_pkgs_local <- FALSE
-
 
 
 #################.
 ##### SETUP #####
 #################.
 
-# Set working directory
+# Set local vs. cluster variables
 if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
   # Local
   setwd(paste0("C:/Users/avike/OneDrive/Desktop/Avi/Biostats + Research/Resear",
                "ch/Marco Carone/Project - monotone testing/z.monotest/R"))
+  load_pkgs_local <- TRUE
 } else {
   # Cluster
   setwd("z.monotest/R")
+  load_pkgs_local <- FALSE
 }
 
 # Set cluster packages
@@ -181,7 +180,7 @@ if (Sys.getenv("run") %in% c("first", "")) {
     # Compare four variants
     level_set_1 <- list(
       n = 30,
-      alpha_3 = c(0,0.25,0.5),
+      alpha_3 = c(0,0.15,0.3),
       sigma = 0.1,
       mono_form = c("identity", "square", "step_0.2"),
       a_distr = list(
@@ -302,7 +301,9 @@ if (cfg$run_or_update=="run") {
         sim %<>% set_script(function() {
           dat <- generate_data(L$n, L$alpha_3, L$sigma, L$mono_form, L$a_distr)
           reject <- do.call(L$test$type, list(dat, "incr", L$test$params))
-          return (list("reject"=reject))
+          # return (list("reject"=reject))
+          return (list(reject=reject$reject, z=reject$z,
+                       beta_n=reject$beta_n, var_est=reject$var_est))
         })
         
       }
@@ -379,7 +380,17 @@ if (FALSE) {
       test=="App_2: var 2" ~ "V2: G0=marg, Pstar=unif",
       test=="App_2: var 3" ~ "V3: G0=id, Pstar=marg",
       test=="App_2: var 4" ~ "V4: G0=marg, Pstar=marg"
+    ),
+    a_distr = case_when(
+      a_distr=="U" ~ "U-shaped",
+      a_distr=="decr" ~ "Decreasing",
+      a_distr=="unif" ~ "Uniform",
+      a_distr=="spike" ~ "Spiked"
     )
+  )
+  summ %<>% mutate(
+    a_distr = factor(a_distr, levels=c("U-shaped","Decreasing","Uniform",
+                                       "Spiked"))
   )
   
   # Visualize results (alpha_3==0)
@@ -391,7 +402,7 @@ if (FALSE) {
     labs(
       x = "Effect size", y = "Power", color = "Test type",
       title = paste0("Power of tests for constant vs. monotone regression ",
-                     "(n=30; 500 sims per level)")
+                     "(n=30; 1000 sims per level)")
     )
   
   # Plot of densities used
