@@ -10,9 +10,9 @@
 # Set global config
 cfg <- list(
   setting = "regression", # hazard regression doseresp
-  level_set_which = "level_set_1",
+  level_set_which = "level_set_2",
   run_or_update = "run",
-  num_sim = 1000,
+  num_sim = 1000, # 1000
   pkgs = c("simba", "ggplot2", "dplyr", "boot", "car", "mgcv", "kdensity",
            "memoise"),
   pkgs_nocluster = c("ggplot2", "viridis"),
@@ -178,7 +178,7 @@ if (Sys.getenv("run") %in% c("first", "")) {
   if (cfg$setting=="regression") {
     
     # Compare four variants
-    level_set_1 <- list(
+    level_set_1a <- list(
       n = 30,
       alpha_3 = c(0,0.15,0.3),
       sigma = 0.1,
@@ -210,13 +210,61 @@ if (Sys.getenv("run") %in% c("first", "")) {
       )
     )
     
+    # Compare four variants
+    level_set_1b <- list(
+      n = 30,
+      alpha_3 = c(0,0.15,0.3),
+      sigma = 0.1,
+      mono_form = c("step_0.2", "step_0.5", "step_0.8"),
+      a_distr = list(
+        "decr" = list(shape1=0.7, shape2=1.3),
+        "incr" = list(shape1=1.3, shape2=0.7),
+        "unif" = list(shape1=1, shape2=1)
+      ),
+      test = list(
+        "App_2: var 1" = list(
+          type = "test2",
+          params = list(G="identity", P_star="uniform",
+                        var="boot", bootreps=100)),
+        "App_2: var 2" = list(
+          type = "test2",
+          params = list(G="marginal", P_star="uniform",
+                        var="boot", bootreps=100)),
+        "App_2: var 3" = list(
+          type = "test2",
+          params = list(G="identity", P_star="marginal",
+                        var="boot", bootreps=100)),
+        "App_2: var 4" = list(
+          type = "test2",
+          params = list(G="marginal", P_star="marginal",
+                        var="boot", bootreps=100))
+      )
+    )
+    
+    # Diagnose inflated alpha problem
+    level_set_2 <- list(
+      n = c(10,30,100,300,1000),
+      alpha_3 = 0,
+      sigma = 0.1,
+      mono_form = "step_0.2",
+      a_distr = list(
+        "incr" = list(shape1=1.3, shape2=0.7)
+      ),
+      test = list(
+        "App_2: var 1" = list(
+          type = "test2",
+          params = list(G="identity", P_star="uniform",
+                        var="boot", bootreps=100))
+      )
+    )
+    
   }
   
   if (cfg$setting=="doseresp") {
     
     # Compare all methods
     level_set_1 <- list(
-      n = c(500,1000),
+      n = c(20,40),
       alpha_3 = c(0,0.7),
       mono_form = c("identity", "square", "step_0.2"),
       test = list(
@@ -382,15 +430,17 @@ if (FALSE) {
       test=="App_2: var 4" ~ "V4: G0=marg, Pstar=marg"
     ),
     a_distr = case_when(
-      a_distr=="U" ~ "U-shaped",
+      # a_distr=="U" ~ "U-shaped",
       a_distr=="decr" ~ "Decreasing",
       a_distr=="unif" ~ "Uniform",
-      a_distr=="spike" ~ "Spiked"
+      # a_distr=="spike" ~ "Spiked"
+      a_distr=="incr" ~ "Increasing"
     )
   )
   summ %<>% mutate(
-    a_distr = factor(a_distr, levels=c("U-shaped","Decreasing","Uniform",
-                                       "Spiked"))
+    a_distr = factor(a_distr, levels=c("Uniform","Increasing","Decreasing"))
+    # a_distr = factor(a_distr, levels=c("U-shaped","Decreasing","Uniform",
+    #                                    "Spiked"))
   )
   
   # Visualize results (alpha_3==0)
@@ -423,7 +473,6 @@ if (FALSE) {
     geom_line() +
     facet_wrap(~density, ncol=4) +
     labs(x="X", y="Density")
-  
   
 }
 

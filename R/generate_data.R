@@ -113,6 +113,8 @@ if(cfg$setting=="regression") {
       mono_f <- function(x) {sqrt(x)}
     } else if (mono_form=="step_0.2") {
       mono_f <- function(x) {as.numeric(x>0.2)}
+    } else if (mono_form=="step_0.5") {
+      mono_f <- function(x) {as.numeric(x>0.5)}
     } else if (mono_form=="step_0.8") {
       mono_f <- function(x) {as.numeric(x>0.8)}
     } else {
@@ -144,12 +146,9 @@ if(cfg$setting=="doseresp") {
   #' @param mono_form Functional form of dose-response curve; should be a monotone
   #'     increasing function with domain [0,1] such that f(0)=0 and f(1)=1;
   #'     choices are c("identity", "square", "sqrt", "step_0.2", "step_0.8")
-  #' @param sampling A list. Either list(type="iid") or
-  #'     list(type="two-phase", params=list(...))
-  #' @return A dataframe representing a study population
-  generate_data <- function(n, alpha_3, mono_form, sampling) {
-    
-    # !!!!! Use `sampling` argument
+  #' @param sampling A list. One of c("iid","two-phase")
+  #' @return A dataframe representing the study population
+  generate_data <- function(n, alpha_3, mono_form, sampling="iid") {
     
     # Fix parameters
     alpha_0 <- -1.5
@@ -177,12 +176,21 @@ if(cfg$setting=="doseresp") {
       stop("mono_form incorrectly specified")
     }
     
+    # Sample outcome
     probs <- expit(alpha_0 + alpha_1*w1 + alpha_2*w2 + alpha_3*mono_f(a))
     y <- rbinom(n, size=1, prob=probs)
     
-    dat <- data.frame(w1=w1, w2=w2, a=a, y=y)
+    # IID sampling
+    if (sampling=="iid") {
+      return (data.frame(w1=w1, w2=w2, a=a, y=y))
+    }
     
-    return (dat)
+    # Two-phase sampling
+    if (sampling=="two-phase") {
+      pi <- expit(2*y-w2)
+      delta <- rbinom(n, size=1, prob=pi)
+      return (data.frame(w1=w1, w2=w2, a=ifelse(delta==1,a,NA), y=y))
+    }
     
   }
   

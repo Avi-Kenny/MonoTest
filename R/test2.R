@@ -340,12 +340,10 @@ if(cfg$setting=="doseresp") {
     
     # !!!!! Options for the following:
     #   domain transfer by marginal of A (yes/no)
-    #   one-step vs plug-in estimator Gamma_n
     #   iid vs two-phase sampling
     
     # Set up component functions
     {
-      
       # Set up G constructor
       construct_G <- function(params, dat) {
         if (params$G == "identity") {
@@ -386,9 +384,8 @@ if(cfg$setting=="doseresp") {
       }
       
       # Estimate density ratio and return an estimator function g_n(a,w)
+      # !!!!! type currently unused
       construct_g_n <- function(dat, type) {
-        
-        # !!!!! type currently unused
         
         f_a <- kdensity(
           x = dat$a,
