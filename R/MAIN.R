@@ -13,7 +13,7 @@ cfg <- list(
   level_set_which = "level_set_2",
   run_or_update = "run",
   num_sim = 1000, # 1000
-  pkgs = c("simba", "ggplot2", "dplyr", "boot", "car", "mgcv", "kdensity",
+  pkgs = c("simba", "dplyr", "boot", "car", "mgcv", "kdensity",
            "memoise"),
   pkgs_nocluster = c("ggplot2", "viridis"),
   parallel = "none", # none
@@ -44,12 +44,9 @@ if (Sys.getenv("USERDOMAIN")=="AVI-KENNY-T460") {
   load_pkgs_local <- FALSE
 }
 
-# Set cluster packages
-cfg$pkgs_cluster <- cfg$pkgs[!(cfg$pkgs %in% cfg$pkgs_nocluster)]
-
 # Load packages (if running locally)
 if (load_pkgs_local) {
-  for (pkg in cfg$pkgs) {
+  for (pkg in c(cfg$pkgs,cfg$pkgs_nocluster)) {
     do.call("library", list(pkg))
   }
 }
@@ -309,7 +306,7 @@ if (cfg$run_or_update=="run") {
         parallel = cfg$parallel,
         stop_at_error = cfg$stop_at_error,
         seed = 3,
-        packages = cfg$pkgs_cluster
+        packages = cfg$pkgs
       )
       sim <- do.call(set_levels, c(list(sim), level_set))
       
