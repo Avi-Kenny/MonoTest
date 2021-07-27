@@ -14,7 +14,7 @@ cfg <- list(
   run_or_update = "run",
   num_sim = 1000, # 1000
   pkgs = c("simba", "dplyr", "boot", "car", "mgcv", "kdensity",
-           "memoise"),
+           "memoise", "twostageTE"),
   pkgs_nocluster = c("ggplot2", "viridis"),
   parallel = "none", # none
   stop_at_error = FALSE
@@ -66,7 +66,7 @@ if (cfg$setting %in% c("density", "doseresp")) {
 ##### MAIN: Set level sets for different simulations #####
 ##########################################################.
 
-if (Sys.getenv("run") %in% c("first", "")) {
+if (Sys.getenv("simba_run") %in% c("first", "")) {
   
   if (cfg$setting=="density") {
 
@@ -289,9 +289,9 @@ if (Sys.getenv("run") %in% c("first", "")) {
 ##########################################.
 
 # Use these commands to run on Slurm:
-# sbatch --export=run='first',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
-# sbatch --depend=afterok:11 --array=1-24000 --export=run='main',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
-# sbatch --depend=afterok:12 --export=run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+# sbatch --export=simba_run='first',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+# sbatch --depend=afterok:11 --array=1-24000 --export=simba_run='main',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
+# sbatch --depend=afterok:12 --export=simba_run='last',cluster='bionic',type='R',project='z.monotest' -e ./io/slurm-%A_%a.out -o ./io/slurm-%A_%a.out --constraint=gizmok run_r.sh
 
 if (cfg$run_or_update=="run") {
   
@@ -360,6 +360,12 @@ if (cfg$run_or_update=="run") {
         sim %<>% add_method(expit)
         sim %<>% add_method(intexpit)
         sim %<>% add_method(test_wald)
+        
+        # Add constants
+        data(chernoff_realizations)
+        sim %<>% add_constants(
+          chern = chernoff_realizations
+        )
         
         # Simulation script
         sim %<>% set_script(function() {
